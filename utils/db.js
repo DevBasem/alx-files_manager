@@ -5,56 +5,73 @@ class DBClient {
    * Initializes a new instance of DBClient
    */
   constructor() {
-    const HOST = process.env.DB_HOST || 'localhost';
-    const PORT = process.env.BD_PORT || 27017;
-    const DATABASE = process.env.DB_DATABASE || 'files_manager';
-    const URI = `mongodb://${HOST}:${PORT}`;
-    this.mongoClient = new MongoClient(URI, { useUnifiedTopology: true });
+    const host = process.env.DB_HOST || 'localhost';
+    const port = process.env.DB_PORT || 27017; // Fixed typo from BD_PORT to DB_PORT
+    const database = process.env.DB_DATABASE || 'files_manager';
+    const uri = `mongodb://${host}:${port}`;
+    this.mongoClient = new MongoClient(uri, { useUnifiedTopology: true });
+    this.db = null;
+
+    // Connect to MongoDB
     this.mongoClient.connect((error) => {
-      if (!error) this.db = this.mongoClient.db(DATABASE);
+      if (error) {
+        console.error('MongoDB connection error:', error);
+      } else {
+        this.db = this.mongoClient.db(database);
+        console.log('MongoDB client connected');
+      }
     });
   }
 
   /**
-   * Check mongodb client's connection status
-   * @returns {boolean} mongoClient connection status
+   * Check MongoDB client's connection status
+   * @returns {boolean} MongoDB client connection status
    */
   isAlive() {
-    return this.mongoClient.isConnected();
+    return !!this.db;
   }
 
   /**
-   * Retrieves specified collection from database
-   * @returns {import("mongodb").Collection} - users collection object
+   * Retrieves specified collection from the database
+   * @param {string} collectionName - Name of the collection to retrieve
+   * @returns {import("mongodb").Collection} - Collection object
    */
   getCollection(collectionName) {
-    const collection = this.db.collection(collectionName);
-    return collection;
-  }
-
-  async nbUsers() {
-    const usersCollection = this.getCollection('users');
-    const numberOfUsers = await usersCollection.countDocuments();
-    return numberOfUsers;
+    if (!this.db) {
+      throw new Error('Database not connected');
+    }
+    return this.db.collection(collectionName);
   }
 
   /**
-   * Queries 'files' collection
-   * @returns {number} - number of documents in files collection
+   * Retrieves the number of documents in the 'users' collection
+   * @returns {number} - Number of documents in 'users' collection
+   */
+  async nbUsers() {
+    const usersCollection = this.getCollection('users');
+    return usersCollection.countDocuments();
+  }
+
+  /**
+   * Retrieves the number of documents in the 'files' collection
+   * @returns {number} - Number of documents in 'files' collection
    */
   async nbFiles() {
     const filesCollection = this.getCollection('files');
-    const numberOfFiles = filesCollection.countDocuments();
-    return numberOfFiles;
+    return filesCollection.countDocuments();
   }
 
   /**
-   * Closes connection to mongodb client
+   * Closes connection to MongoDB client
    */
   async close() {
-    await this.mongoClient.close();
+    if (this.mongoClient) {
+      await this.mongoClient.close();
+      console.log('MongoDB client disconnected');
+    }
   }
 }
 
+// Create and export an instance of DBClient
 const dbClient = new DBClient();
 export default dbClient;

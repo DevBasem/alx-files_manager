@@ -1,6 +1,12 @@
 import redis from 'redis';
 
+/**
+ * RedisClient class for interacting with a Redis database.
+ */
 class RedisClient {
+  /**
+   * Initializes a new instance of RedisClient.
+   */
   constructor() {
     this.client = redis.createClient();
 
@@ -10,12 +16,19 @@ class RedisClient {
     });
   }
 
-  // Check if the client is alive
+  /**
+   * Check if the Redis client is alive.
+   * @returns {boolean} - True if the client is connected, otherwise false.
+   */
   isAlive() {
     return this.client.connected;
   }
 
-  // Get value for a given key
+  /**
+   * Retrieves the value associated with the specified key.
+   * @param {string} key - The key to get the value for.
+   * @returns {Promise<string|null>} - A promise that resolves with the value or null if not found.
+   */
   async get(key) {
     return new Promise((resolve, reject) => {
       this.client.get(key, (err, reply) => {
@@ -28,7 +41,13 @@ class RedisClient {
     });
   }
 
-  // Set value for a given key with expiration
+  /**
+   * Sets the value for the specified key with an expiration time.
+   * @param {string} key - The key to set the value for.
+   * @param {string} value - The value to set.
+   * @param {number} duration - The expiration time in seconds.
+   * @returns {Promise<string>} - A promise that resolves with the reply from Redis.
+   */
   async set(key, value, duration) {
     return new Promise((resolve, reject) => {
       this.client.setex(key, duration, value, (err, reply) => {
@@ -41,7 +60,11 @@ class RedisClient {
     });
   }
 
-  // Delete a key
+  /**
+   * Deletes the specified key from Redis.
+   * @param {string} key - The key to delete.
+   * @returns {Promise<number>} - A promise that resolves with the number of keys removed (1 if successful, 0 otherwise).
+   */
   async del(key) {
     return new Promise((resolve, reject) => {
       this.client.del(key, (err, reply) => {
