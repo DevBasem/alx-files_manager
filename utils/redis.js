@@ -63,7 +63,8 @@ class RedisClient {
   /**
    * Deletes the specified key from Redis.
    * @param {string} key - The key to delete.
-   * @returns {Promise<number>} - A promise that resolves with the number of keys removed (1 if successful, 0 otherwise).
+   * @returns {Promise<number>} - A promise that resolves with the number
+   * of keys removed (1 if successful, 0 otherwise).
    */
   async del(key) {
     return new Promise((resolve, reject) => {
