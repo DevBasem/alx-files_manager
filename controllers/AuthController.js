@@ -1,69 +1,68 @@
-import sha1 from 'sha1';
-import { v4 as uuidv4 } from 'uuid';
-import dbClient from '../utils/db';
-import redisClient from '../utils/redis';
+import UsersCollection from '../utils/users';
+import AuthTokenHandler from '../utils/tokens';
+import PasswordHandler from '../utils/passwords';
 
 class AuthController {
   /**
-   * Authenticates a user and generates an auth token.
-   * @param {Object} req - The request object.
-   * @param {Object} res - The response object.
+   * Controller for GET /connect endpoint for authorizing users
+   * using Basic Auth scheme
+   * @param {import("express").Request} req - request object
+   * @param {import("express").Response} res - response object
    */
   static async getConnect(req, res) {
-    const authHeader = req.header('Authorization');
-    if (!authHeader || !authHeader.startsWith('Basic ')) {
+    // Get authorization parameters
+    const authParams = req.get('Authorization');
+    if (!authParams) return res.status(401).json({ error: 'Unauthorized' });
+
+    // Get base64 authentication parameters and decrypt to ascii
+    const credentials = Buffer
+      .from(authParams.replace('Basic', ''), 'base64')
+      .toString('ascii')
+      .split(':');
+    const email = credentials[0] || '';
+    const password = credentials[1] || '';
+
+    // Check if user exists
+    const user = await UsersCollection.getUser({ email });
+    if (!user) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const base64Credentials = authHeader.slice(6);
-    const credentials = Buffer.from(base64Credentials, 'base64').toString('ascii');
-    const [email, password] = credentials.split(':');
-
-    if (!email || !password) {
+    // Check if passwords match
+    if (!PasswordHandler.isPasswordValid(password, user.password)) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const hashedPassword = sha1(password);
-
-    try {
-      const usersCollection = dbClient.getCollection('users');
-      const user = await usersCollection.findOne({ email, password: hashedPassword });
-
-      if (!user) {
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
-
-      const token = uuidv4();
-      const key = `auth_${token}`;
-      await redisClient.set(key, user._id.toString(), 24 * 60 * 60);
-
-      return res.status(200).json({ token });
-    } catch (error) {
-      console.error('Error during authentication:', error);
-      return res.status(500).json({ error: 'Internal Server Error' });
-    }
+    const token = await AuthTokenHandler.createAuthToken(user);
+    return res.status(200).json({ token });
   }
 
   /**
-   * Logs out a user by deleting the auth token.
-   * @param {Object} req - The request object.
-   * @param {Object} res - The response object.
+   * Controller for GET /disconnect endpoint that logs out user
+   * if they were logged in.
+   * @param {import("express").Request} req - request object
+   * @param {import("express").Response} res - response object
    */
   static async getDisconnect(req, res) {
-    const token = req.header('X-Token');
-    if (!token) {
-      return res.status(401).json({ error: 'Unauthorized' });
+    const token = req.get('X-Token');
+    if (!await AuthTokenHandler.getUserByToken(token)) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
     }
+    await AuthTokenHandler.deleteAuthToken(token);
+    res.status(204).json();
+  }
 
-    const key = `auth_${token}`;
-    const userId = await redisClient.get(key);
-
-    if (!userId) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-
-    await redisClient.del(key);
-    return res.status(204).send();
+  /**
+   * Controller for GET /users/me endpoint that retrieves information
+   * about a logged in user
+   * @param {import("express").Request} req - request object
+   * @param {import("express").Response} res - response object
+   */
+  static async getMe(req, res) {
+    const { user } = req;
+    if (!user) res.status(401).json({ error: 'Unauthorized' });
+    else res.status(200).json({ id: user._id.toString(), email: user.email });
   }
 }
 
