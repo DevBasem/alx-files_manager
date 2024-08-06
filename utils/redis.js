@@ -27,7 +27,8 @@ class RedisClient {
   /**
    * Retrieves the value associated with the specified key.
    * @param {string} key - The key to get the value for.
-   * @returns {Promise<string|null>} - A promise that resolves with the value or null if not found.
+   * @returns {Promise<string|null>} - A promise that resolves
+   * with the value or null if not found.
    */
   async get(key) {
     return new Promise((resolve, reject) => {
@@ -46,7 +47,8 @@ class RedisClient {
    * @param {string} key - The key to set the value for.
    * @param {string} value - The value to set.
    * @param {number} duration - The expiration time in seconds.
-   * @returns {Promise<string>} - A promise that resolves with the reply from Redis.
+   * @returns {Promise<string>} - A promise that resolves
+   * with the reply from Redis.
    */
   async set(key, value, duration) {
     return new Promise((resolve, reject) => {
