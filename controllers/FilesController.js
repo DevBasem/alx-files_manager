@@ -11,6 +11,15 @@ class FilesController {
    * @param {Object} res - The response object for sending responses.
    */
   static async postUpload(req, res) {
+    // Existing code for postUpload
+  }
+
+  /**
+   * Retrieves a file document by its ID.
+   * @param {Object} req - The request object.
+   * @param {Object} res - The response object.
+   */
+  static async getShow(req, res) {
     const token = req.header('X-Token');
     if (!token) {
       return res.status(401).json({ error: 'Unauthorized' });
@@ -23,64 +32,69 @@ class FilesController {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const { name, type, parentId = 0, isPublic = false, data } = req.body;
+    try {
+      const fileId = req.params.id;
+      const filesCollection = dbClient.getCollection('files');
+      const file = await filesCollection.findOne({ _id: dbClient.mongoClient.ObjectID(fileId), userId: dbClient.mongoClient.ObjectID(userId) });
 
-    if (!name) {
-      return res.status(400).json({ error: 'Missing name' });
+      if (!file) {
+        return res.status(404).json({ error: 'Not found' });
+      }
+
+      return res.json({
+        id: file._id,
+        userId: file.userId,
+        name: file.name,
+        type: file.type,
+        isPublic: file.isPublic,
+        parentId: file.parentId,
+      });
+    } catch (error) {
+      console.error('Error retrieving file:', error);
+      return res.status(500).json({ error: 'Internal Server Error' });
+    }
+  }
+
+  /**
+   * Retrieves a list of file documents for a specific parentId and with pagination.
+   * @param {Object} req - The request object.
+   * @param {Object} res - The response object.
+   */
+  static async getIndex(req, res) {
+    const token = req.header('X-Token');
+    if (!token) {
+      return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    if (!type || !['folder', 'file', 'image'].includes(type)) {
-      return res.status(400).json({ error: 'Missing type' });
-    }
+    const key = `auth_${token}`;
+    const userId = await redisClient.get(key);
 
-    if (type !== 'folder' && !data) {
-      return res.status(400).json({ error: 'Missing data' });
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
     }
 
     try {
+      const { parentId = 0, page = 0 } = req.query;
       const filesCollection = dbClient.getCollection('files');
-      let parentFile = null;
-      
-      if (parentId !== 0) {
-        parentFile = await filesCollection.findOne({ _id: dbClient.mongoClient.ObjectID(parentId) });
-        if (!parentFile) {
-          return res.status(400).json({ error: 'Parent not found' });
-        }
-        if (parentFile.type !== 'folder') {
-          return res.status(400).json({ error: 'Parent is not a folder' });
-        }
-      }
-
-      const newFile = {
+      const limit = 20;
+      const skip = page * limit;
+      const query = {
         userId: dbClient.mongoClient.ObjectID(userId),
-        name,
-        type,
-        isPublic,
-        parentId: parentId === 0 ? '0' : dbClient.mongoClient.ObjectID(parentId).toString(),
-        localPath: null,
+        parentId: parentId === '0' ? 0 : dbClient.mongoClient.ObjectID(parentId),
       };
 
-      if (type !== 'folder') {
-        const FOLDER_PATH = process.env.FOLDER_PATH || '/tmp/files_manager';
-        const localPath = path.join(FOLDER_PATH, uuidv4());
+      const files = await filesCollection.find(query).skip(skip).limit(limit).toArray();
 
-        await fs.mkdir(FOLDER_PATH, { recursive: true });
-        await fs.writeFile(localPath, Buffer.from(data, 'base64'));
-
-        newFile.localPath = localPath;
-      }
-
-      const result = await filesCollection.insertOne(newFile);
-      return res.status(201).json({
-        id: result.insertedId,
-        userId,
-        name,
-        type,
-        isPublic,
-        parentId: newFile.parentId,
-      });
+      return res.json(files.map(file => ({
+        id: file._id,
+        userId: file.userId,
+        name: file.name,
+        type: file.type,
+        isPublic: file.isPublic,
+        parentId: file.parentId,
+      })));
     } catch (error) {
-      console.error('Error uploading file:', error);
+      console.error('Error retrieving files:', error);
       return res.status(500).json({ error: 'Internal Server Error' });
     }
   }
