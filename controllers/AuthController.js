@@ -1,9 +1,14 @@
 import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
-import dbClient from '../utils/db.js';
-import redisClient from '../utils/redis.js';
+import dbClient from '../utils/db';
+import redisClient from '../utils/redis';
 
 class AuthController {
+  /**
+   * Handles user sign-in and generates a new authentication token.
+   * @param {Object} req - The request object containing authorization header.
+   * @param {Object} res - The response object for sending responses.
+   */
   static async getConnect(req, res) {
     const authHeader = req.headers.authorization;
 
@@ -31,12 +36,17 @@ class AuthController {
       const token = uuidv4();
       await redisClient.set(`auth_${token}`, user._id.toString(), 24 * 60 * 60); // Store token for 24 hours
 
-      res.status(200).json({ token });
+      return res.status(200).json({ token }); // Ensure to return the response
     } catch (error) {
-      res.status(500).json({ error: 'Internal server error' });
+      return res.status(500).json({ error: 'Internal server error' }); // Ensure to return the response
     }
   }
 
+  /**
+   * Handles user sign-out by deleting the authentication token.
+   * @param {Object} req - The request object containing token header.
+   * @param {Object} res - The response object for sending responses.
+   */
   static async getDisconnect(req, res) {
     const token = req.headers['x-token'];
 
@@ -52,9 +62,9 @@ class AuthController {
       }
 
       await redisClient.del(`auth_${token}`);
-      res.status(204).send();
+      return res.status(204).send(); // Ensure to return the response
     } catch (error) {
-      res.status(500).json({ error: 'Internal server error' });
+      return res.status(500).json({ error: 'Internal server error' }); // Ensure to return the response
     }
   }
 }
