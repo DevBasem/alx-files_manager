@@ -1,71 +1,68 @@
-import crypto from 'crypto';
-import { v4 as uuidv4 } from 'uuid';
-import dbClient from '../utils/db';
-import redisClient from '../utils/redis';
+import UsersCollection from '../utils/users';
+import AuthTokenHandler from '../utils/tokens';
+import PasswordHandler from '../utils/passwords';
 
 class AuthController {
   /**
-   * Handles user sign-in and generates a new authentication token.
-   * @param {Object} req - The request object containing authorization header.
-   * @param {Object} res - The response object for sending responses.
+   * Controller for GET /connect endpoint for authorizing users
+   * using Basic Auth scheme
+   * @param {import("express").Request} req - request object
+   * @param {import("express").Response} res - response object
    */
   static async getConnect(req, res) {
-    const authHeader = req.headers.authorization;
+    // Get authorization parameters
+    const authParams = req.get('Authorization');
+    if (!authParams) return res.status(401).json({ error: 'Unauthorized' });
 
-    if (!authHeader || !authHeader.startsWith('Basic ')) {
+    // Get base64 authentication parameters and decrypt to ascii
+    const credentials = Buffer
+      .from(authParams.replace('Basic', ''), 'base64')
+      .toString('ascii')
+      .split(':');
+    const email = credentials[0] || '';
+    const password = credentials[1] || '';
+
+    // Check if user exists
+    const user = await UsersCollection.getUser({ email });
+    if (!user) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const base64Credentials = authHeader.split(' ')[1];
-    const credentials = Buffer.from(base64Credentials, 'base64').toString('ascii');
-    const [email, password] = credentials.split(':');
-
-    if (!email || !password) {
+    // Check if passwords match
+    if (!PasswordHandler.isPasswordValid(password, user.password)) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    const hashedPassword = crypto.createHash('sha1').update(password).digest('hex');
-
-    try {
-      const user = await dbClient.db.collection('users').findOne({ email, password: hashedPassword });
-
-      if (!user) {
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
-
-      const token = uuidv4();
-      await redisClient.set(`auth_${token}`, user._id.toString(), 24 * 60 * 60); // Store token for 24 hours
-
-      return res.status(200).json({ token }); // Ensure to return the response
-    } catch (error) {
-      return res.status(500).json({ error: 'Internal server error' }); // Ensure to return the response
-    }
+    const token = await AuthTokenHandler.createAuthToken(user);
+    return res.status(200).json({ token });
   }
 
   /**
-   * Handles user sign-out by deleting the authentication token.
-   * @param {Object} req - The request object containing token header.
-   * @param {Object} res - The response object for sending responses.
+   * Controller for GET /disconnect endpoint that logs out user
+   * if they were logged in.
+   * @param {import("express").Request} req - request object
+   * @param {import("express").Response} res - response object
    */
   static async getDisconnect(req, res) {
-    const token = req.headers['x-token'];
-
-    if (!token) {
-      return res.status(401).json({ error: 'Unauthorized' });
+    const token = req.get('X-Token');
+    if (!await AuthTokenHandler.getUserByToken(token)) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
     }
+    await AuthTokenHandler.deleteAuthToken(token);
+    res.status(204).json();
+  }
 
-    try {
-      const userId = await redisClient.get(`auth_${token}`);
-
-      if (!userId) {
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
-
-      await redisClient.del(`auth_${token}`);
-      return res.status(204).send(); // Ensure to return the response
-    } catch (error) {
-      return res.status(500).json({ error: 'Internal server error' }); // Ensure to return the response
-    }
+  /**
+   * Controller for GET /users/me endpoint that retrieves information
+   * about a logged in user
+   * @param {import("express").Request} req - request object
+   * @param {import("express").Response} res - response object
+   */
+  static async getMe(req, res) {
+    const { user } = req;
+    if (!user) res.status(401).json({ error: 'Unauthorized' });
+    else res.status(200).json({ id: user._id.toString(), email: user.email });
   }
 }
 
